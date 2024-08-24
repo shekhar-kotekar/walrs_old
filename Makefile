@@ -5,8 +5,9 @@ k8s_context := kind-kind
 
 install_git_hooks:
 	@echo "Installing git hooks"
-	cp hooks/pre-commit .git/hooks/pre-commit
+	cp ./hooks/pre-commit .git/hooks/pre-commit
 	chmod +x .git/hooks/pre-commit
+	@echo "Git hooks installed successfully! Use git add and git commit to commit your changes"
 
 set_kind_context:
 	kubectl config use-context ${k8s_context}

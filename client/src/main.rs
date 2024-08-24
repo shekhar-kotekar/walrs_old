@@ -6,7 +6,6 @@ mod commands;
 
 fn main() {
     let args = Arguments::parse();
-    println!("{:?}", args);
     match args.command {
         Some(Commands::CreateTopic {
             broker_address,
@@ -25,7 +24,7 @@ fn main() {
             create_topic(topic_to_create, broker_address);
         }
         None => {
-            println!("No command provided");
+            println!("ERROR: No command provided");
         }
     }
 }
