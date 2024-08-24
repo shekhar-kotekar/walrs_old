@@ -1,9 +1,7 @@
-export CONFIG_FILE_PATH := config.toml
-
 IMAGE_REGISTRY := localhost:5001
 k8s_context := kind-kind
 
-.PHONY: prepare test build dockerize set_kind_context install_git_hooks
+.PHONY: prepare test build dockerize set_kind_context install_git_hooks release deploy teardown
 
 install_git_hooks:
 	@echo "Installing git hooks"
@@ -38,3 +36,13 @@ dockerize: set_kind_context
 	
 	@echo "INFO: $(PACKAGE) built successfully!"
 	docker images
+
+deploy: dockerize
+	@echo "INFO: Deploying $(PACKAGE) package"
+	kubectl apply -f k8s/prerequisites.yml
+	kubectl apply -f k8s/${PACKAGE}.yml
+
+teardown: set_kind_context
+	@echo "INFO: Undeploying $(PACKAGE) package"
+	kubectl delete -f k8s/${PACKAGE}.yml
+	kubectl delete -f k8s/prerequisites.yml
