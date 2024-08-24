@@ -183,6 +183,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
 
 [[package]]
+name = "client"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "common",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -197,6 +205,23 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "core"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bytes",
+ "common",
+ "futures",
+ "serde",
+ "tempdir",
+ "tokio",
+ "tokio-test",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -712,31 +737,6 @@ name = "valuable"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
-
-[[package]]
-name = "walrs_client"
-version = "0.1.0"
-dependencies = [
- "clap",
- "common",
-]
-
-[[package]]
-name = "walrs_core"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "bytes",
- "common",
- "futures",
- "serde",
- "tempdir",
- "tokio",
- "tokio-test",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "wasi"

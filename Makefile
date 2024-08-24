@@ -24,6 +24,12 @@ prepare: set_kind_context
 build: prepare
 	cargo build --package $(PACKAGE)
 
+test: prepare
+	cargo test --package $(PACKAGE)
+
+release: test
+	cargo build --release --package $(PACKAGE)
+
 dockerize:
 	docker build -t walrs_core:latest .
 	
