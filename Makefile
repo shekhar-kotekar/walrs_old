@@ -30,6 +30,11 @@ test: prepare
 release: test
 	cargo build --release --package $(PACKAGE)
 
-dockerize:
-	docker build -t walrs_core:latest .
+dockerize: set_kind_context
+	@echo "INFO: Building $(PACKAGE) package"
 	
+	docker build --tag ${IMAGE_REGISTRY}/walrs_$(PACKAGE):latest -f $(PACKAGE)/Dockerfile .
+	docker push ${IMAGE_REGISTRY}/walrs_$(PACKAGE):latest
+	
+	@echo "INFO: $(PACKAGE) built successfully!"
+	docker images
