@@ -37,9 +37,11 @@ impl ProducerManager {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(log_file_path)
             .await
-            .unwrap(); // Unwrap the Result to get the tokio::fs::File value
+            .unwrap();
+
         let mut file_writer = FramedWrite::new(file, BatchEncoder {});
         let max_records_per_batch = 100;
         let mut current_batch = Batch {

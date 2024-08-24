@@ -47,10 +47,10 @@ impl Decoder for BatchDecoder {
                 if buf.is_empty() {
                     Ok(None)
                 } else {
-                    Err(
-                        std::io::Error::new(std::io::ErrorKind::Other, "bytes remaining on stream")
-                            .into(),
-                    )
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "bytes remaining on stream",
+                    ))
                 }
             }
         }

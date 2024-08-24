@@ -1,2 +1,5 @@
-[main]
+[core]
 log_dir_path = "/tmp/walrs/logs/"
+
+[client]
+core_pods_address = ["core_pod_1", "core_pod_2"]
