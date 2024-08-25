@@ -189,6 +189,8 @@ dependencies = [
  "bincode",
  "clap",
  "common",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -205,6 +207,8 @@ dependencies = [
  "bytes",
  "serde",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

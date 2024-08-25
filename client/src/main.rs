@@ -5,6 +5,7 @@ use common::models::Topic;
 mod commands;
 
 fn main() {
+    common::enable_tracing();
     let args = Arguments::parse();
     match args.command {
         Some(Commands::CreateTopic {
@@ -24,7 +25,7 @@ fn main() {
             create_topic(topic_to_create, broker_address);
         }
         None => {
-            println!("ERROR: No command provided");
+            tracing::info!("ERROR: No command provided");
         }
     }
 }
