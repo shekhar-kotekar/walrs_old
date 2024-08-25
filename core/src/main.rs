@@ -18,8 +18,12 @@ async fn main() {
     let cancellation_token = CancellationToken::new();
     let log_dir_path = "./logs/".to_string();
 
+    tracing::info!("Listening on: {}", listener.local_addr().unwrap());
+
     loop {
         let (stream, _) = listener.accept().await.unwrap();
+        tracing::info!("Accepted a new connection");
+
         let (_parent_tx, parent_rx) = mpsc::channel::<ParentalCommands>(100);
         let cancellation_token_clone = cancellation_token.clone();
         let cloned_log_dir_path = log_dir_path.clone();
