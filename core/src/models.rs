@@ -20,24 +20,6 @@ pub enum ClientType {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub enum TopicCommand {
-    CreateTopic {
-        topic_name: String,
-        num_partitions: u8,
-        batch_size: u16,
-    },
-    WriteToTopic {
-        topic_name: String,
-    },
-}
-
-impl From<Vec<u8>> for TopicCommand {
-    fn from(bytes: Vec<u8>) -> Self {
-        bincode::deserialize(&bytes).unwrap()
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Partition {
     pub id: u8,
     pub base_offset: u64,

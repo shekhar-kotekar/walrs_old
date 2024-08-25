@@ -17,6 +17,18 @@ pub struct Batch {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub enum TopicCommand {
+    CreateTopic { topic: Topic },
+    WriteToTopic { topic_name: String },
+}
+
+impl From<Vec<u8>> for TopicCommand {
+    fn from(bytes: Vec<u8>) -> Self {
+        bincode::deserialize(&bytes).unwrap()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Topic {
     pub name: String,
     pub num_partitions: u8,

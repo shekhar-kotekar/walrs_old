@@ -1,8 +1,10 @@
 use bytes::BytesMut;
+use common::models::TopicCommand;
 use managers::producer_manager::ProducerManager;
-use models::{ParentalCommands, TopicCommand};
-use tokio::io::AsyncReadExt;
-use tokio::sync::mpsc;
+use managers::topics_manager::{TopicManagerCommands, TopicsManager};
+use models::ParentalCommands;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
 mod managers;
@@ -11,9 +13,14 @@ mod models;
 #[tokio::main]
 async fn main() {
     common::enable_tracing();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080")
-        .await
-        .unwrap();
+
+    let mut topics_manager = TopicsManager::new();
+    let (topic_manager_tx, topic_manager_rx) = mpsc::channel::<TopicManagerCommands>(10);
+    tokio::spawn(async move {
+        topics_manager.start_topic_manager(topic_manager_rx).await;
+    });
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
     let cancellation_token = CancellationToken::new();
     let log_dir_path = "./logs/".to_string();
@@ -27,25 +34,30 @@ async fn main() {
         let (_parent_tx, parent_rx) = mpsc::channel::<ParentalCommands>(100);
         let cancellation_token_clone = cancellation_token.clone();
         let cloned_log_dir_path = log_dir_path.clone();
+        let topic_manager_tx_clone = topic_manager_tx.clone();
 
         tokio::spawn(async move {
             let mut buf_stream = tokio::io::BufStream::new(stream);
-            let mut message_buffer = BytesMut::with_capacity(1024);
+            let mut message_buffer = BytesMut::with_capacity(56);
             let num_bytes_read = buf_stream.read_buf(&mut message_buffer).await.unwrap();
             tracing::info!("Received {} bytes", num_bytes_read);
+
             let client_command = TopicCommand::from(message_buffer.to_vec());
             match client_command {
-                TopicCommand::CreateTopic {
-                    topic_name,
-                    num_partitions,
-                    batch_size,
-                } => {
-                    tracing::info!(
-                        "Received a CreateTopic command: {} {} {}",
-                        topic_name,
-                        num_partitions,
-                        batch_size
-                    );
+                TopicCommand::CreateTopic { topic } => {
+                    tracing::info!("Received a CreateTopic command: {:?}", topic);
+                    let (reply_tx, reply_rx) = oneshot::channel();
+                    topic_manager_tx_clone
+                        .send(TopicManagerCommands::CreateTopic {
+                            topic,
+                            reply_tx: reply_tx,
+                        })
+                        .await
+                        .unwrap();
+                    let response = reply_rx.await.unwrap();
+                    let response_bytes = bincode::serialize(&response).unwrap();
+
+                    buf_stream.write_all(&response_bytes).await.unwrap();
                 }
                 TopicCommand::WriteToTopic { topic_name } => {
                     tracing::info!("Received a WriteToTopic command: {}", topic_name);
