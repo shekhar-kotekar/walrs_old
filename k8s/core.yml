@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: walrs-core
-        image: localhost:5001/walrs:latest
+        image: localhost:5001/walrs_core:latest
         ports:
         - containerPort: 8080
           name: walrs-core-svc

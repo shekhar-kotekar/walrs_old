@@ -1,2 +1,7 @@
 *.yml
 *.yaml
+*.log
+/target
+.DS_Store
+/.idea
+/.vscode
