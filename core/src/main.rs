@@ -4,6 +4,7 @@ use managers::producer_manager::ProducerManager;
 use managers::topics_manager::{TopicManagerCommands, TopicsManager};
 use models::ParentalCommands;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::signal;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -70,5 +71,15 @@ async fn main() {
                 }
             }
         });
+        // If core is not receiving requests then remove below ctrl_c block. this is not tested yet.
+        match signal::ctrl_c().await {
+            Ok(_) => {
+                tracing::info!("Received Ctrl-C, shutting down");
+                cancellation_token.cancel();
+            }
+            Err(e) => {
+                tracing::error!("Error: {:?}", e);
+            }
+        }
     }
 }
