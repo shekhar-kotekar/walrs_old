@@ -1,6 +1,6 @@
 use common::codecs::decoder::BatchDecoder;
 use common::codecs::encoder::BatchEncoder;
-use common::models::Batch;
+use common::models::{Batch, Topic};
 use futures::{SinkExt, StreamExt};
 use tokio::fs::File;
 use tokio::io::BufStream;
@@ -31,14 +31,18 @@ impl ProducerManager {
         }
     }
 
-    pub async fn serve(&mut self, stream: BufStream<TcpStream>, topic_name: String) {
-        let log_file_path = format!("{}/{}/kafka.log", self.log_directory_path, topic_name);
+    fn get_log_file_path(&self, topic: Topic) -> String {
+        format!("{}/{}/segment_0.log", self.log_directory_path, topic.name)
+    }
+
+    pub async fn serve(&mut self, stream: BufStream<TcpStream>, topic: Topic) {
+        tracing::info!("ProducerManager serving topic: {:?}", topic);
         let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(true)
-            .open(log_file_path)
+            .open(self.get_log_file_path(topic))
             .await
             .unwrap();
 
@@ -117,7 +121,7 @@ impl ProducerManager {
 mod tests {
     use std::{fs, time::SystemTime};
 
-    use common::models::{Batch, Message};
+    use common::models::{Batch, Message, Topic};
     use tokio::{
         io::AsyncWriteExt,
         net::{TcpListener, TcpStream},
@@ -153,8 +157,15 @@ mod tests {
         );
 
         tokio::spawn(async move {
+            let topic = Topic {
+                name: topic_name.clone(),
+                num_partitions: 1,
+                replication_factor: 1,
+                retention_period: 1,
+                batch_size: 10,
+            };
             let buf_stream = tokio::io::BufStream::new(stream);
-            pm.serve(buf_stream, topic_name).await;
+            pm.serve(buf_stream, topic).await;
         });
 
         let (oneshot_tx, oneshot_rx) = oneshot::channel::<Option<Partition>>();
@@ -177,99 +188,4 @@ mod tests {
             }
         }
     }
-
-    // #[tokio::test]
-    // async fn test_producer_manager_should_write_batch_to_file() {
-    //     let listener = TcpListener::bind("127.0.0.1:5058").await.unwrap();
-    //     let local_addr = listener.local_addr().unwrap();
-
-    //     let (parent_tx, parent_rx) = mpsc::channel(10);
-    //     let cancellation_token = CancellationToken::new();
-
-    //     let topic_name: String = "dummy_topic".to_string();
-    //     let temp_dir = tempdir::TempDir::new("").unwrap();
-
-    //     let log_dir_path = temp_dir.path().join(topic_name.clone());
-    //     fs::create_dir_all(log_dir_path.clone()).unwrap();
-
-    //     let mut pm = ProducerManager::new(
-    //         parent_rx,
-    //         cancellation_token.clone(),
-    //         temp_dir.path().to_str().unwrap().to_string(),
-    //     );
-
-    //     let (stream, _) = listener.accept().await.unwrap();
-    //     tokio::spawn(async move {
-    //         let buf_stream = tokio::io::BufStream::new(stream);
-    //         pm.serve(buf_stream, topic_name).await;
-    //     });
-
-    //     let (oneshot_tx, oneshot_rx) = oneshot::channel::<Option<Partition>>();
-
-    //     let get_partition_info_command = ParentalCommands::GetPartitionInfo {
-    //         reply_tx: oneshot_tx,
-    //     };
-    //     match parent_tx.send(get_partition_info_command).await {
-    //         Ok(_) => {
-    //             let partition_info = oneshot_rx.await.unwrap().unwrap();
-    //             assert_eq!(partition_info.id, 0);
-    //             assert_eq!(partition_info.base_offset, 0);
-    //             assert_eq!(partition_info.last_offset, 0);
-    //             assert_eq!(partition_info.count, 0);
-    //         }
-    //         Err(_) => {
-    //             cancellation_token.cancel();
-    //             panic!("Failed to send GetPartitionInfo command");
-    //         }
-    //     }
-
-    //     let batch = Batch {
-    //         base_offset: 0,
-    //         last_offset: 1,
-    //         count: 2,
-    //         records: vec![
-    //             Message {
-    //                 offset: 0,
-    //                 payload: vec![1, 2, 3].into(),
-    //                 timestamp: SystemTime::now()
-    //                     .duration_since(SystemTime::UNIX_EPOCH)
-    //                     .unwrap()
-    //                     .as_millis(),
-    //             },
-    //             Message {
-    //                 offset: 1,
-    //                 payload: vec![11, 22, 33].into(),
-    //                 timestamp: SystemTime::now()
-    //                     .duration_since(SystemTime::UNIX_EPOCH)
-    //                     .unwrap()
-    //                     .as_millis(),
-    //             },
-    //         ],
-    //     };
-
-    //     let encoded_batch = bincode::serialize(&batch).unwrap();
-    //     let mut client_stream = TcpStream::connect(local_addr).await.unwrap();
-    //     client_stream.write_all(&encoded_batch).await.unwrap();
-
-    //     let (oneshot_tx, oneshot_rx) = oneshot::channel::<Option<Partition>>();
-
-    //     let get_partition_info_command = ParentalCommands::GetPartitionInfo {
-    //         reply_tx: oneshot_tx,
-    //     };
-    //     match parent_tx.send(get_partition_info_command).await {
-    //         Ok(_) => {
-    //             let partition_info = oneshot_rx.await.unwrap().unwrap();
-    //             println!("{:?}", partition_info);
-    //             assert_eq!(partition_info.id, 0);
-    //             assert_eq!(partition_info.base_offset, 0);
-    //             assert_eq!(partition_info.last_offset, 1);
-    //             assert_eq!(partition_info.count, 2);
-    //             cancellation_token.cancel();
-    //         }
-    //         Err(_) => {
-    //             cancellation_token.cancel();
-    //             panic!("Failed to send GetPartitionInfo command");
-    //         }
-    //     }
-    // }
 }

@@ -15,9 +15,9 @@ pub fn create_topic(topic: Topic, broker_address: String) {
         .expect("Could not write to stream");
     tracing::info!("Request to create topic sent to server.");
 
-    let mut buffer = [0; 128];
+    let mut buffer = Vec::new();
     stream
-        .read(&mut buffer)
+        .read_to_end(&mut buffer)
         .expect("Could not read from stream");
 
     let response = String::from_utf8_lossy(&buffer);

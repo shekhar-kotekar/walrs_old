@@ -49,10 +49,7 @@ async fn main() {
                     tracing::info!("Received a CreateTopic command: {:?}", topic);
                     let (reply_tx, reply_rx) = oneshot::channel();
                     topic_manager_tx_clone
-                        .send(TopicManagerCommands::CreateTopic {
-                            topic,
-                            reply_tx: reply_tx,
-                        })
+                        .send(TopicManagerCommands::CreateTopic { topic, reply_tx })
                         .await
                         .unwrap();
                     let response = reply_rx.await.unwrap();
@@ -62,12 +59,28 @@ async fn main() {
                 }
                 TopicCommand::WriteToTopic { topic_name } => {
                     tracing::info!("Received a WriteToTopic command: {}", topic_name);
-                    let mut producer_manager = ProducerManager::new(
-                        parent_rx,
-                        cancellation_token_clone,
-                        cloned_log_dir_path,
-                    );
-                    producer_manager.serve(buf_stream, topic_name).await;
+                    let (reply_tx, reply_rx) = oneshot::channel();
+                    topic_manager_tx_clone
+                        .send(TopicManagerCommands::GetTopicInfo {
+                            topic_name: topic_name.clone(),
+                            reply_tx,
+                        })
+                        .await
+                        .unwrap();
+
+                    match reply_rx.await.unwrap() {
+                        Some(topic) => {
+                            let mut producer_manager = ProducerManager::new(
+                                parent_rx,
+                                cancellation_token_clone,
+                                cloned_log_dir_path,
+                            );
+                            producer_manager.serve(buf_stream, topic).await;
+                        }
+                        None => {
+                            tracing::error!("Topic {} does not exist", topic_name);
+                        }
+                    }
                 }
             }
         });

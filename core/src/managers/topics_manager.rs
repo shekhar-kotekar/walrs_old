@@ -41,11 +41,12 @@ impl TopicsManager {
                     topic_name,
                     reply_tx,
                 } => {
-                    let topic = self.topics.get(&topic_name);
-                    reply_tx.send(topic.cloned()).unwrap();
-                }
-                _ => {
-                    tracing::error!("Topic manager cannot handle this command");
+                    if self.topics.contains_key(topic_name.as_str()) {
+                        let topic = self.topics.get(&topic_name);
+                        reply_tx.send(topic.cloned()).unwrap();
+                    } else {
+                        reply_tx.send(None).unwrap();
+                    }
                 }
             }
         }
@@ -56,9 +57,6 @@ pub enum TopicManagerCommands {
     CreateTopic {
         topic: Topic,
         reply_tx: oneshot::Sender<Option<Topic>>,
-    },
-    DeleteTopic {
-        topic_name: String,
     },
     GetTopicInfo {
         topic_name: String,
