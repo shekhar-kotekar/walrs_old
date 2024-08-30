@@ -24,7 +24,12 @@ build: prepare
 	cargo build --package $(PACKAGE)
 
 test: prepare
+	export RUST_LOG=DEBUG
 	cargo test --package $(PACKAGE)
+
+test_module:
+	export RUST_LOG=DEBUG
+	cargo test $(MODULE) -- --nocapture
 
 release: test
 	cargo build --release --package $(PACKAGE)

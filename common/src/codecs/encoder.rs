@@ -51,12 +51,14 @@ mod tests {
     #[test]
     fn test_encode() {
         let message = Message {
-            offset: 0,
             payload: vec![1, 2, 3].into(),
-            timestamp: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis(),
+            key: None,
+            timestamp: Some(
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+            ),
         };
         let mut encoder = MessageEncoder {
             payload_max_bytes: 10,
@@ -72,12 +74,14 @@ mod tests {
     #[test]
     fn test_encode_payload_too_large() {
         let message = Message {
-            offset: 0,
-            payload: vec![0; 11].into(),
-            timestamp: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis(),
+            payload: vec![0, 11].into(),
+            key: None,
+            timestamp: Some(
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+            ),
         };
         let mut encoder = MessageEncoder {
             payload_max_bytes: 10,

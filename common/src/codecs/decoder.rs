@@ -59,6 +59,8 @@ impl Decoder for BatchDecoder {
 
 #[cfg(test)]
 mod tests {
+    use std::time::SystemTime;
+
     use crate::codecs::encoder::MessageEncoder;
 
     use super::*;
@@ -68,9 +70,14 @@ mod tests {
     #[test]
     fn test_decode() {
         let message = Message {
-            offset: 0,
             payload: vec![1, 2, 3].into(),
-            timestamp: 123,
+            key: None,
+            timestamp: Some(
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis(),
+            ),
         };
         let mut encoder = MessageEncoder {
             payload_max_bytes: 10,

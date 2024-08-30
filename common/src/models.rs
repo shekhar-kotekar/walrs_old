@@ -1,25 +1,45 @@
+use std::time::SystemTime;
+
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Message {
-    pub offset: u64,
     pub payload: Bytes,
-    pub timestamp: u128,
+    pub key: Option<String>,
+    pub timestamp: Option<u128>,
+}
+
+impl Message {
+    pub fn new(payload: Bytes, key: Option<String>, timestamp: Option<u128>) -> Self {
+        let message_timestamp = timestamp.unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        });
+        Message {
+            payload,
+            key,
+            timestamp: Some(message_timestamp),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Batch {
-    pub base_offset: u64,
-    pub last_offset: u64,
-    pub count: u32,
     pub records: Vec<Message>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum TopicCommand {
-    CreateTopic { topic: Topic },
-    WriteToTopic { topic_name: String },
+    CreateTopic {
+        topic: Topic,
+    },
+    WriteToTopic {
+        topic_name: String,
+        messages: Vec<Message>,
+    },
 }
 
 impl From<Vec<u8>> for TopicCommand {
@@ -31,25 +51,30 @@ impl From<Vec<u8>> for TopicCommand {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Topic {
     pub name: String,
-    pub num_partitions: u8,
-    pub replication_factor: u8,
-    pub retention_period: u16,
-    pub batch_size: u16,
+    pub num_partitions: Option<u8>,
+    pub replication_factor: Option<u8>,
+    pub retention_period: Option<u8>,
+    pub batch_size: Option<u8>,
 }
 
-impl From<Vec<u8>> for Topic {
-    fn from(bytes: Vec<u8>) -> Self {
-        let topic_details: Topic = bincode::deserialize(&bytes).unwrap();
-        if topic_details.name.is_empty() {
-            panic!("Topic name cannot be empty");
-        } else if topic_details.name.len() > 255 {
-            panic!("Topic name cannot be more than 255 characters");
-        } else if topic_details.num_partitions == 0 {
-            panic!("Number of partitions cannot be 0");
-        } else if topic_details.batch_size == 0 {
-            panic!("Batch size cannot be 0");
-        } else {
-            topic_details
+impl Topic {
+    pub fn new(
+        name: String,
+        num_partitions: Option<u8>,
+        replication_factor: Option<u8>,
+        retention_period: Option<u8>,
+        batch_size: Option<u8>,
+    ) -> Self {
+        let num_partitions = num_partitions.unwrap_or(3);
+        let replication_factor = replication_factor.unwrap_or(2);
+        let retention_period = retention_period.unwrap_or(24 * 7);
+        let batch_size = batch_size.unwrap_or(10);
+        Topic {
+            name,
+            num_partitions: Some(num_partitions),
+            replication_factor: Some(replication_factor),
+            retention_period: Some(retention_period),
+            batch_size: Some(batch_size),
         }
     }
 }

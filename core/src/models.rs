@@ -2,14 +2,32 @@ use common::models::Topic;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct PartitionInfo {
+    pub topic: Topic,
+    pub partition_index: u8,
+    pub partition_path: String,
+}
+
+impl PartitionInfo {
+    pub fn new(topic: Topic, partition_index: u8, log_dir_path: String) -> Self {
+        let partition_path = format!("{}/{}", log_dir_path, partition_index);
+        PartitionInfo {
+            topic,
+            partition_index,
+            partition_path,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ParentalCommands {
-    Stop,
     GetTopicInfo {
         topic_name: String,
         reply_tx: oneshot::Sender<Option<Topic>>,
     },
     GetPartitionInfo {
-        reply_tx: oneshot::Sender<Option<Partition>>,
+        reply_tx: oneshot::Sender<PartitionInfo>,
     },
 }
 
@@ -20,9 +38,26 @@ pub enum ClientType {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct Partition {
-    pub id: u8,
-    pub base_offset: u64,
-    pub last_offset: u64,
-    pub count: u32,
+pub enum ClientRequests {
+    InitiateWrite {
+        topic: String,
+    },
+    Write {
+        topic: String,
+        message_batch: Vec<u8>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub enum ClientResponses {
+    TopicNotFound {
+        topic: String,
+    },
+    WriteAccepted {
+        topic: String,
+    },
+    WriteComplete {
+        topic: String,
+        num_messages_written: u32,
+    },
 }

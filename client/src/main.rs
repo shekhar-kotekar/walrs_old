@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use commands::create_topic;
+use commands::{create_topic, write_message};
 use common::models::Topic;
 
 mod commands;
@@ -15,15 +15,15 @@ fn main() {
         }) => {
             let topic_to_create = Topic {
                 name: args.topic_name,
-                num_partitions: partition_count.unwrap_or(1),
-                replication_factor: replication_factor.unwrap_or(1),
-                retention_period: 1,
-                batch_size: batch_size.unwrap_or(1),
+                num_partitions: partition_count,
+                replication_factor: replication_factor,
+                retention_period: Some(1),
+                batch_size: batch_size,
             };
             create_topic(topic_to_create, args.broker_address);
         }
         Some(Commands::WriteToTopic { message }) => {
-            tracing::info!("Writing message: {} to topic: {}", message, args.topic_name);
+            write_message(message, args.topic_name, args.broker_address)
         }
         None => {
             tracing::info!("ERROR: No command provided");
@@ -50,7 +50,7 @@ enum Commands {
         partition_count: Option<u8>,
 
         #[clap(short = 'b')]
-        batch_size: Option<u16>,
+        batch_size: Option<u8>,
 
         #[clap(short = 'r')]
         replication_factor: Option<u8>,
