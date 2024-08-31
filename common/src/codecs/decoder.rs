@@ -23,6 +23,7 @@ impl Decoder for MessageDecoder {
 }
 
 pub struct BatchDecoder {}
+
 impl Decoder for BatchDecoder {
     type Item = Batch;
 
@@ -61,14 +62,14 @@ impl Decoder for BatchDecoder {
 mod tests {
     use std::time::SystemTime;
 
-    use crate::codecs::encoder::MessageEncoder;
+    use crate::codecs::encoder::{BatchEncoder, MessageEncoder};
 
     use super::*;
     use bytes::BytesMut;
     use tokio_util::codec::Encoder;
 
     #[test]
-    fn test_decode() {
+    fn test_message_decoder() {
         let message = Message {
             payload: vec![1, 2, 3].into(),
             key: None,
@@ -89,5 +90,45 @@ mod tests {
 
         let decoded = decoder.decode(&mut src).unwrap().unwrap();
         assert_eq!(decoded, message);
+    }
+
+    #[test]
+    fn test_batch_decoder() {
+        let batch = Batch {
+            records: vec![
+                Message {
+                    payload: vec![1, 2, 3].into(),
+                    key: None,
+                    timestamp: Some(
+                        SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis(),
+                    ),
+                },
+                Message {
+                    payload: vec![4, 5, 6].into(),
+                    key: None,
+                    timestamp: Some(
+                        SystemTime::now()
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis(),
+                    ),
+                },
+            ],
+        };
+        let mut batch_encoder = BatchEncoder {};
+        let mut encoded_batch_buffer = BytesMut::new();
+        batch_encoder
+            .encode(batch.clone(), &mut encoded_batch_buffer)
+            .unwrap();
+
+        let mut decoder = BatchDecoder {};
+        let decoded_batch = decoder
+            .decode(&mut encoded_batch_buffer.clone())
+            .unwrap()
+            .unwrap();
+        assert_eq!(decoded_batch, batch);
     }
 }
