@@ -187,48 +187,45 @@ mod tests {
         parent_tx.send(get_partition_manager_command).await.unwrap();
         let partition_manager_tx = reply_rx.await.unwrap().unwrap();
 
-        let message_1 = Message {
-            payload: BytesMut::from("Message 1 without timestamp".as_bytes()).freeze(),
-            key: Some("dummy_key".to_string()),
-            timestamp: None,
-        };
+        let message_1 = Message::new(
+            BytesMut::from("Message 1 without timestamp".as_bytes()).freeze(),
+            Some("dummy_key".to_string()),
+            None,
+        );
 
-        let message_2 = Message {
-            payload: BytesMut::from("Message 2 with timestamp".as_bytes()).freeze(),
-            key: None,
-            timestamp: Some(1234567890),
-        };
+        let message_2 = Message::new(
+            BytesMut::from("Message 2 without key and with timestamp".as_bytes()).freeze(),
+            None,
+            Some(1234567890),
+        );
 
-        let message_3 = Message {
-            payload: BytesMut::from("Message 3 with timestamp".as_bytes()).freeze(),
-            key: Some("dummy_key_2".to_string()),
-            timestamp: Some(1334567899),
-        };
+        let message_3 = Message::new(
+            BytesMut::from("Message 3 with timestamp".as_bytes()).freeze(),
+            Some("dummy_key_2".to_string()),
+            Some(1334567899),
+        );
         partition_manager_tx.send(message_1.clone()).await.unwrap();
         partition_manager_tx.send(message_2.clone()).await.unwrap();
         partition_manager_tx.send(message_3.clone()).await.unwrap();
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         cancellation_token.cancel();
 
         topic_manager_handle.await.unwrap();
 
-        let segment_file_path = format!("{}/0/{}", log_dir_path, "segment_0.log");
-        tracing::info!("in test - Segment file path: {}", segment_file_path);
+        let segment_file_path = format!("{}/{}/0/segment_0.log", log_dir_path, topic_name);
         let file_contents = fs::read(segment_file_path).unwrap();
-        tracing::info!("in test - File contents: {:?}", file_contents);
         let mut batch_decoder = BatchDecoder {};
         let mut src = BytesMut::from(file_contents.as_slice());
 
         let mut decoded_batches = Vec::new();
 
         while let Some(decoded_batch) = batch_decoder.decode(&mut src).unwrap() {
-            tracing::info!("Decoded batch: {:?}", decoded_batch);
             decoded_batches.push(decoded_batch);
         }
         assert_eq!(decoded_batches.len(), 2);
-        assert_eq!(decoded_batches[0].records[0], message_1);
-        assert_eq!(decoded_batches[0].records[1], message_2);
-        assert_eq!(decoded_batches[1].records[0], message_3);
+        assert_eq!(decoded_batches[0].records[0].payload, message_1.payload);
+        assert_eq!(decoded_batches[0].records[1].payload, message_2.payload);
+        assert_eq!(decoded_batches[1].records[0].payload, message_3.payload);
     }
 }

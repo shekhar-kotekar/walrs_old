@@ -42,11 +42,7 @@ pub fn write_message(message: String, topic_name: String, broker_address: String
         .write_all(&topic_bytes)
         .expect("Could not write to stream");
 
-    let message = Message {
-        payload: message.into(),
-        key: None,
-        timestamp: None,
-    };
+    let message = Message::new(message.into(), None, None);
     let batch = Batch {
         records: vec![message],
     };

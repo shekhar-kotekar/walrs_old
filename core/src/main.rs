@@ -76,8 +76,37 @@ async fn handle_client_connection(
                 )
                 .await;
             }
+            TopicCommand::ReadFromTopic { topic_name } => {
+                handle_read_from_topic_request(
+                    topic_name,
+                    topic_manager_tx,
+                    buf_stream.into_inner(),
+                )
+                .await;
+            }
         }
     });
+}
+
+async fn handle_read_from_topic_request(
+    topic_name: String,
+    topic_manager_tx_clone: mpsc::Sender<TopicManagerCommands>,
+    mut buf_stream: TcpStream,
+) {
+    let (reply_tx, reply_rx) = oneshot::channel();
+    topic_manager_tx_clone
+        .send(TopicManagerCommands::GetTopicInfo {
+            topic_name: topic_name.clone(),
+            reply_tx,
+        })
+        .await
+        .unwrap();
+    let response = reply_rx.await.unwrap();
+    let response_bytes = bincode::serialize(&response).unwrap();
+
+    buf_stream.write_all(&response_bytes).await.unwrap();
+    buf_stream.flush().await.unwrap();
+    buf_stream.shutdown().await.unwrap();
 }
 
 async fn handle_write_to_topic_request(

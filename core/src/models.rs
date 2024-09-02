@@ -10,7 +10,7 @@ pub struct PartitionInfo {
 
 impl PartitionInfo {
     pub fn new(topic: Topic, partition_index: u8, log_dir_path: String) -> Self {
-        let partition_path = format!("{}/{}", log_dir_path, partition_index);
+        let partition_path = format!("{}/{}/{}", log_dir_path, topic.name, partition_index);
         PartitionInfo {
             topic,
             partition_index,

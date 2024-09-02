@@ -70,16 +70,16 @@ mod tests {
 
     #[test]
     fn test_message_decoder() {
-        let message = Message {
-            payload: vec![1, 2, 3].into(),
-            key: None,
-            timestamp: Some(
+        let message = Message::new(
+            vec![1, 2, 3].into(),
+            None,
+            Some(
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap()
                     .as_millis(),
             ),
-        };
+        );
         let mut encoder = MessageEncoder {
             payload_max_bytes: 10,
         };
@@ -96,26 +96,26 @@ mod tests {
     fn test_batch_decoder() {
         let batch = Batch {
             records: vec![
-                Message {
-                    payload: vec![1, 2, 3].into(),
-                    key: None,
-                    timestamp: Some(
+                Message::new(
+                    vec![1, 2, 3].into(),
+                    None,
+                    Some(
                         SystemTime::now()
                             .duration_since(SystemTime::UNIX_EPOCH)
                             .unwrap()
                             .as_millis(),
                     ),
-                },
-                Message {
-                    payload: vec![4, 5, 6].into(),
-                    key: None,
-                    timestamp: Some(
+                ),
+                Message::new(
+                    vec![4, 5, 6].into(),
+                    None,
+                    Some(
                         SystemTime::now()
                             .duration_since(SystemTime::UNIX_EPOCH)
                             .unwrap()
                             .as_millis(),
                     ),
-                },
+                ),
             ],
         };
         let mut batch_encoder = BatchEncoder {};

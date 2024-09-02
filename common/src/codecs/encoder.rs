@@ -50,16 +50,16 @@ mod tests {
 
     #[test]
     fn test_encode() {
-        let message = Message {
-            payload: vec![1, 2, 3].into(),
-            key: None,
-            timestamp: Some(
+        let message = Message::new(
+            vec![1, 2, 3].into(),
+            None,
+            Some(
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap()
                     .as_millis(),
             ),
-        };
+        );
         let mut encoder = MessageEncoder {
             payload_max_bytes: 10,
         };
@@ -74,16 +74,16 @@ mod tests {
     #[ignore]
     #[test]
     fn test_encode_payload_too_large() {
-        let message = Message {
-            payload: vec![0, 99].into(),
-            key: None,
-            timestamp: Some(
+        let message = Message::new(
+            vec![0, 99].into(),
+            None,
+            Some(
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap()
                     .as_millis(),
             ),
-        };
+        );
         let mut encoder = MessageEncoder {
             payload_max_bytes: 10,
         };
