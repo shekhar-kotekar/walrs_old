@@ -1,18 +1,21 @@
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hasher};
 
-use common::models::{Batch, Topic};
+use common::models::{Message, Topic};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::managers::partition_manager::start_partition_writer;
-use crate::models::{ParentalCommands, PartitionInfo};
+use crate::models::PartitionInfo;
+
+const PARTITION_MANAGER_CHANNEL_SIZE: usize = 1000;
 
 pub struct TopicsManager {
     topics: HashMap<String, Topic>,
     cancellation_token: CancellationToken,
     log_dir_path: String,
+    partition_client_tx: HashMap<String, Sender<Message>>,
 }
 
 impl TopicsManager {
@@ -21,54 +24,18 @@ impl TopicsManager {
             topics: HashMap::new(),
             cancellation_token,
             log_dir_path,
+            partition_client_tx: HashMap::new(),
         }
     }
 
     pub async fn start_topics_manager(&mut self, mut parent_rx: Receiver<TopicManagerCommands>) {
         tracing::info!("Topic Manager started");
-        let partition_manager_channel_size = 1000;
-        let mut partition_client_tx = HashMap::<String, Sender<Batch>>::new();
-        let mut partition_parent_tx = HashMap::<String, Sender<ParentalCommands>>::new();
         loop {
             tokio::select! {
                     Some(command) = parent_rx.recv() => {
                         match command {
                             TopicManagerCommands::CreateTopic { topic, reply_tx } => {
-                                let topic_name = topic.name.clone();
-
-                                if self.topics.contains_key(topic_name.as_str()) {
-                                    tracing::warn!("{} Topic already exists", topic_name);
-                                    let topic = self.topics.get(topic_name.as_str()).unwrap().to_owned();
-                                    reply_tx.send(Some(topic)).unwrap();
-                                } else {
-
-                                    for partition_index in 0..topic.num_partitions.unwrap() {
-                                        let partition_name = format!("{}-{}", topic_name, partition_index);
-                                        let (client_tx, client_rx) =
-                                            mpsc::channel::<Batch>(partition_manager_channel_size);
-                                        let (parent_tx, parent_rx) = mpsc::channel::<ParentalCommands>(10);
-                                        partition_client_tx.insert(partition_name.clone(), client_tx);
-                                        partition_parent_tx.insert(partition_name, parent_tx);
-                                        let partition = PartitionInfo::new(
-                                            topic.clone(),
-                                            partition_index,
-                                            self.log_dir_path.clone(),
-                                        );
-                                        let cancellation_token_for_partition = self.cancellation_token.clone();
-                                        tokio::spawn(async move {
-                                            start_partition_writer(
-                                                partition,
-                                                parent_rx,
-                                                client_rx,
-                                                cancellation_token_for_partition,
-                                            )
-                                            .await;
-                                        });
-                                    }
-                                    self.topics.insert(topic_name.clone(), topic.clone());
-                                    tracing::info!("{} Topic created", topic_name);
-                                    reply_tx.send(Some(topic)).unwrap();
-                                }
+                                self.create_topic(topic, reply_tx).await;
                             }
                             TopicManagerCommands::GetPartitionManagerTx {
                                 topic_name,
@@ -85,9 +52,9 @@ impl TopicsManager {
                                     })
                                     .unwrap_or(0);
                                 let partition_name = format!("{}-{}", topic_name, partition_index);
-                                if partition_client_tx.contains_key(&partition_name) {
-                                    let client_tx = partition_client_tx.get(&partition_name).unwrap();
-                                    reply_tx.send(Some(client_tx.clone())).unwrap();
+                                if self.partition_client_tx.contains_key(&partition_name) {
+                                    let client_tx = self.partition_client_tx.get(&partition_name).unwrap();
+                                    reply_tx.send(Some(client_tx.to_owned())).unwrap();
                                 } else {
                                     reply_tx.send(None).unwrap();
                                 }
@@ -112,6 +79,34 @@ impl TopicsManager {
             }
         }
     }
+
+    async fn create_topic(&mut self, topic: Topic, reply_tx: oneshot::Sender<Option<Topic>>) {
+        let topic_name = topic.name.clone();
+
+        if self.topics.contains_key(topic_name.as_str()) {
+            tracing::warn!("{} Topic already exists", topic_name);
+            let topic = self.topics.get(topic_name.as_str()).unwrap().to_owned();
+            reply_tx.send(Some(topic)).unwrap();
+        } else {
+            for partition_index in 0..topic.num_partitions.unwrap() {
+                let partition_name = format!("{}-{}", topic_name, partition_index);
+                let (client_tx, client_rx) =
+                    mpsc::channel::<Message>(PARTITION_MANAGER_CHANNEL_SIZE);
+                self.partition_client_tx
+                    .insert(partition_name.clone(), client_tx);
+                let partition =
+                    PartitionInfo::new(topic.clone(), partition_index, self.log_dir_path.clone());
+                let cancellation_token_for_partition = self.cancellation_token.clone();
+                tokio::spawn(async move {
+                    start_partition_writer(partition, client_rx, cancellation_token_for_partition)
+                        .await;
+                });
+            }
+            self.topics.insert(topic_name.clone(), topic.clone());
+            tracing::info!("{} Topic created", topic_name);
+            reply_tx.send(Some(topic)).unwrap();
+        }
+    }
 }
 
 pub enum TopicManagerCommands {
@@ -126,7 +121,7 @@ pub enum TopicManagerCommands {
     GetPartitionManagerTx {
         topic_name: String,
         message_key: Option<String>,
-        reply_tx: oneshot::Sender<Option<Sender<Batch>>>,
+        reply_tx: oneshot::Sender<Option<Sender<Message>>>,
     },
 }
 
@@ -136,49 +131,9 @@ mod tests {
 
     use super::*;
     use bytes::BytesMut;
-    use common::codecs::encoder::BatchEncoder;
     use common::{codecs::decoder::BatchDecoder, models::Message};
     use test_log::test;
     use tokio_util::codec::Decoder;
-    use tokio_util::codec::Encoder;
-
-    // #[test(tokio::test)]
-    // async fn test_topics_manager_should_create_new_topic() {
-    //     let temp_dir = tempdir::TempDir::new("log_dir_").unwrap();
-    //     let log_dir_path = temp_dir.path().to_str().unwrap().to_string();
-    //     let (parent_tx, parent_rx) = mpsc::channel(5);
-    //     let cancellation_token = CancellationToken::new();
-
-    //     let mut topics_manager =
-    //         TopicsManager::new(log_dir_path.clone(), cancellation_token.clone());
-
-    //     let topic = Topic {
-    //         name: "test_topic".to_string(),
-    //         num_partitions: Some(3),
-    //         replication_factor: Some(1),
-    //         retention_period: Some(1),
-    //         batch_size: Some(10),
-    //     };
-
-    //     let topic_manager_handle = tokio::spawn(async move {
-    //         topics_manager.start_topics_manager(parent_rx).await;
-    //     });
-
-    //     let (reply_tx, reply_rx) = oneshot::channel();
-    //     parent_tx
-    //         .send(TopicManagerCommands::CreateTopic {
-    //             topic: topic.clone(),
-    //             reply_tx: reply_tx,
-    //         })
-    //         .await
-    //         .unwrap();
-
-    //     let topic = reply_rx.await.unwrap().unwrap();
-    //     assert_eq!(topic.name, "test_topic");
-
-    //     cancellation_token.cancel();
-    //     topic_manager_handle.await.unwrap();
-    // }
 
     #[test(tokio::test)]
     async fn test_topics_manager_should_return_partition_manager() {
@@ -244,15 +199,10 @@ mod tests {
             key: Some("dummy_key_2".to_string()),
             timestamp: Some(1334567899),
         };
-        let batch = Batch {
-            records: vec![message_1.clone(), message_2.clone(), message_3.clone()],
-        };
-        let mut batch_encoder = BatchEncoder {};
-        let mut encoded_batch_buffer = BytesMut::new();
-        batch_encoder
-            .encode(batch.clone(), &mut encoded_batch_buffer)
-            .unwrap();
-        partition_manager_tx.send(batch).await.unwrap();
+        partition_manager_tx.send(message_1.clone()).await.unwrap();
+        partition_manager_tx.send(message_2.clone()).await.unwrap();
+        partition_manager_tx.send(message_3.clone()).await.unwrap();
+
         tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
         cancellation_token.cancel();
         match topic_manager_handle.await {

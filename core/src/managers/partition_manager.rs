@@ -2,18 +2,17 @@ use std::fs;
 
 use bytes::BytesMut;
 use common::codecs::encoder::BatchEncoder;
-use common::models::Batch;
+use common::models::{Batch, Message};
 use tokio::io::AsyncWriteExt;
 use tokio::{fs::OpenOptions, sync::mpsc};
 use tokio_util::codec::Encoder;
 use tokio_util::sync::CancellationToken;
 
-use crate::models::{ParentalCommands, PartitionInfo};
+use crate::models::PartitionInfo;
 
 pub async fn start_partition_writer(
     partition_info: PartitionInfo,
-    mut parent_rx: mpsc::Receiver<ParentalCommands>,
-    mut peers_rx: mpsc::Receiver<Batch>,
+    mut peers_rx: mpsc::Receiver<Message>,
     cancellation_token: CancellationToken,
 ) {
     tracing::info!(
@@ -45,11 +44,8 @@ pub async fn start_partition_writer(
     let mut current_batch = Batch { records: vec![] };
     loop {
         tokio::select! {
-            Some(command) = parent_rx.recv() => {
-                tracing::info!("Received command: {:?}", command);
-            }
-            Some(message_batch) = peers_rx.recv() => {
-                current_batch.records.extend(message_batch.records);
+            Some(message) = peers_rx.recv() => {
+                current_batch.records.push(message);
                 if current_batch.records.len() >= partition_info.topic.batch_size.unwrap() as usize {
                     let mut dst = BytesMut::new();
                     let mut batch_encoder = BatchEncoder {};
@@ -70,7 +66,6 @@ pub async fn start_partition_writer(
             _ = cancellation_token.cancelled() => {
                 tracing::info!("Cancellation token received for {}: {} partition manager.", partition_info.topic.name, partition_info.partition_index);
                 file.flush().await.expect("Failed to flush segment file");
-                parent_rx.close();
                 peers_rx.close();
                 break;
             }
@@ -84,7 +79,10 @@ mod tests {
 
     use super::*;
     use bytes::BytesMut;
-    use common::models::{Message, Topic};
+    use common::{
+        codecs::encoder::MessageEncoder,
+        models::{Message, Topic},
+    };
     use test_log::test;
 
     #[test(tokio::test)]
@@ -103,19 +101,12 @@ mod tests {
             log_dir_path.as_path().to_str().unwrap().to_string(),
         );
 
-        let (_, parent_rx) = mpsc::channel(5);
-        let (peers_tx, peers_rx) = mpsc::channel::<Batch>(5);
+        let (peers_tx, peers_rx) = mpsc::channel::<Message>(3);
         let cancellation_token = CancellationToken::new();
         let cancellation_token_clone = cancellation_token.clone();
 
         let partition_manager_handle = tokio::spawn(async move {
-            start_partition_writer(
-                partition_info,
-                parent_rx,
-                peers_rx,
-                cancellation_token_clone,
-            )
-            .await;
+            start_partition_writer(partition_info, peers_rx, cancellation_token_clone).await;
         });
 
         let message_1 = Message {
@@ -128,14 +119,14 @@ mod tests {
             key: None,
             timestamp: Some(1234567890),
         };
-        let batch = Batch {
-            records: vec![message_1.clone(), message_2.clone()],
-        };
         let mut dst = BytesMut::new();
-        let mut batch_encoder = BatchEncoder {};
-        batch_encoder.encode(batch.clone(), &mut dst).unwrap();
+        let mut message_encoder = MessageEncoder {
+            payload_max_bytes: 1000,
+        };
+        message_encoder.encode(message_1.clone(), &mut dst).unwrap();
 
-        peers_tx.send(batch).await.unwrap();
+        peers_tx.send(message_1).await.unwrap();
+        peers_tx.send(message_2).await.unwrap();
 
         tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
         cancellation_token.cancel();

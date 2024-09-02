@@ -33,13 +33,8 @@ pub struct Batch {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum TopicCommand {
-    CreateTopic {
-        topic: Topic,
-    },
-    WriteToTopic {
-        topic_name: String,
-        messages: Vec<Message>,
-    },
+    CreateTopic { topic: Topic },
+    WriteToTopic { topic_name: String },
 }
 
 impl From<Vec<u8>> for TopicCommand {
@@ -77,4 +72,17 @@ impl Topic {
             batch_size: Some(batch_size),
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub enum BrokerResponse {
+    TopicCreated { topic: Topic },
+    TopicAlreadyExists { topic: Topic },
+    TopicNotFound { topic_name: String },
+    TopicDeleted { topic_name: String },
+    TopicNotDeleted { topic_name: String },
+    TopicList(Vec<Topic>),
+    MessageBatchWriteSuccess,
+    MessageBatchWriteFailure { error: String },
+    SendMessageBatch,
 }

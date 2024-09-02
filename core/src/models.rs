@@ -1,6 +1,5 @@
 use common::models::Topic;
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct PartitionInfo {
@@ -18,46 +17,4 @@ impl PartitionInfo {
             partition_path,
         }
     }
-}
-
-#[derive(Debug)]
-pub enum ParentalCommands {
-    GetTopicInfo {
-        topic_name: String,
-        reply_tx: oneshot::Sender<Option<Topic>>,
-    },
-    GetPartitionInfo {
-        reply_tx: oneshot::Sender<PartitionInfo>,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub enum ClientType {
-    Producer,
-    Consumer,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub enum ClientRequests {
-    InitiateWrite {
-        topic: String,
-    },
-    Write {
-        topic: String,
-        message_batch: Vec<u8>,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub enum ClientResponses {
-    TopicNotFound {
-        topic: String,
-    },
-    WriteAccepted {
-        topic: String,
-    },
-    WriteComplete {
-        topic: String,
-        num_messages_written: u32,
-    },
 }

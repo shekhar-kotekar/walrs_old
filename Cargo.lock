@@ -190,8 +190,10 @@ name = "client"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "bytes",
  "clap",
  "common",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
 ]

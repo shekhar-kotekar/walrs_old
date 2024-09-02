@@ -1,7 +1,9 @@
+use tokio_util::codec::Decoder;
+
 use bytes::BytesMut;
-use common::models::{Message, Topic, TopicCommand};
+use common::codecs::decoder::BatchDecoder;
+use common::models::{BrokerResponse, Topic, TopicCommand};
 use managers::topics_manager::{TopicManagerCommands, TopicsManager};
-use models::{ClientResponses, ParentalCommands};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufStream};
 use tokio::net::TcpStream;
 use tokio::signal::unix::{signal, SignalKind};
@@ -30,6 +32,7 @@ async fn main() {
         tracing::info!("Shutting down gracefully");
         cancellation_token_for_shutdown.cancel();
     });
+
     let log_dir_path = "./logs/".to_string();
     let mut topics_manager = TopicsManager::new(log_dir_path, cancellation_token.clone());
     let (topic_manager_tx, topic_manager_rx) = mpsc::channel::<TopicManagerCommands>(10);
@@ -39,30 +42,19 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
-    let log_dir_path = "./logs/".to_string();
-
     tracing::info!("Listening on: {}", listener.local_addr().unwrap());
 
     loop {
         let (socket, _) = listener.accept().await.unwrap();
-        handle_client_connection(
-            socket,
-            cancellation_token.clone(),
-            log_dir_path.clone(),
-            topic_manager_tx.clone(),
-        )
-        .await;
+        handle_client_connection(socket, topic_manager_tx.clone()).await;
     }
 }
 
 async fn handle_client_connection(
     socket: TcpStream,
-    cancellation_token: CancellationToken,
-    log_dir_path: String,
     topic_manager_tx: mpsc::Sender<TopicManagerCommands>,
 ) {
     tracing::info!("Accepted a new connection");
-    let (_, parent_rx) = mpsc::channel::<ParentalCommands>(100);
 
     tokio::spawn(async move {
         let mut buf_stream = tokio::io::BufStream::new(socket);
@@ -76,18 +68,11 @@ async fn handle_client_connection(
             TopicCommand::CreateTopic { topic } => {
                 handle_create_topic_request(topic, topic_manager_tx, buf_stream).await;
             }
-            TopicCommand::WriteToTopic {
-                topic_name,
-                messages,
-            } => {
+            TopicCommand::WriteToTopic { topic_name } => {
                 handle_write_to_topic_request(
                     topic_name,
-                    messages,
                     topic_manager_tx,
                     buf_stream.into_inner(),
-                    parent_rx,
-                    cancellation_token,
-                    log_dir_path,
                 )
                 .await;
             }
@@ -97,35 +82,57 @@ async fn handle_client_connection(
 
 async fn handle_write_to_topic_request(
     topic_name: String,
-    messages: Vec<Message>,
     topic_manager_tx_clone: mpsc::Sender<TopicManagerCommands>,
     mut buf_stream: TcpStream,
-    parent_rx: mpsc::Receiver<ParentalCommands>,
-    cancellation_token_clone: CancellationToken,
-    log_dir_path: String,
 ) {
-    tracing::info!("Received a WriteToTopic command for topic: {}", topic_name);
-    let (reply_tx, reply_rx) = oneshot::channel();
-    topic_manager_tx_clone
-        .send(TopicManagerCommands::GetTopicInfo {
-            topic_name: topic_name.clone(),
-            reply_tx,
-        })
-        .await
-        .unwrap();
+    let mut message_buffer = BytesMut::with_capacity(56);
+    let num_bytes_read = buf_stream.read_buf(&mut message_buffer).await.unwrap();
+    tracing::info!("Received {} bytes", num_bytes_read);
 
-    match reply_rx.await.unwrap() {
-        Some(topic) => {
-            messages.iter().for_each(|message| {
-                let partition = message.to_owned().key.unwrap_or_default();
-            });
+    let mut batch_decoder = BatchDecoder {};
+    match batch_decoder.decode(&mut message_buffer) {
+        Ok(Some(batch)) => {
+            for message in batch.records {
+                let (reply_tx, reply_rx) = oneshot::channel();
+                let command_for_topic_manager = TopicManagerCommands::GetPartitionManagerTx {
+                    topic_name: topic_name.clone(),
+                    message_key: message.key.clone(),
+                    reply_tx: reply_tx,
+                };
+                topic_manager_tx_clone
+                    .send(command_for_topic_manager)
+                    .await
+                    .unwrap();
+                match reply_rx.await.unwrap() {
+                    Some(partition_manager_tx) => {
+                        partition_manager_tx.send(message).await.unwrap();
+                    }
+                    None => {
+                        tracing::error!("Partition manager not found for message: {:?}", message);
+                    }
+                }
+            }
+            let response = BrokerResponse::MessageBatchWriteSuccess;
+            let response_bin = bincode::serialize(&response).unwrap();
+            buf_stream.write(&response_bin).await.unwrap();
+            buf_stream.shutdown().await.unwrap();
         }
-        None => {
-            tracing::error!("Topic {} does not exist", topic_name);
-            let response = ClientResponses::TopicNotFound { topic: topic_name };
-            let response_bytes = bincode::serialize(&response).unwrap();
-            buf_stream.write_all(&response_bytes).await.unwrap();
-            buf_stream.flush().await.unwrap();
+        Ok(None) => {
+            tracing::info!("Not enough data to decode a batch");
+            let response = BrokerResponse::MessageBatchWriteFailure {
+                error: "Not enough data to decode a batch".to_string(),
+            };
+            let response_bin = bincode::serialize(&response).unwrap();
+            buf_stream.write(&response_bin).await.unwrap();
+            buf_stream.shutdown().await.unwrap();
+        }
+        Err(e) => {
+            tracing::error!("Error decoding batch: {:?}", e);
+            let response = BrokerResponse::MessageBatchWriteFailure {
+                error: format!("Error decoding batch: {:?}", e),
+            };
+            let response_bin = bincode::serialize(&response).unwrap();
+            buf_stream.write(&response_bin).await.unwrap();
             buf_stream.shutdown().await.unwrap();
         }
     }
