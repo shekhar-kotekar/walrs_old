@@ -69,8 +69,6 @@ pub async fn start_partition_writer(
                 }
             }
             _ = cancellation_token.cancelled() => {
-                tracing::info!("Cancellation token received for {}: {} partition manager.", partition_info.topic.name, partition_info.partition_index);
-                tracing::info!("cancellation -- current batch: {:?}", current_batch);
                 if !current_batch.records.is_empty() {
                     let mut encoded_batch = BytesMut::new();
                     match batch_encoder.encode(current_batch.clone(), &mut encoded_batch) {
@@ -79,7 +77,7 @@ pub async fn start_partition_writer(
                                 .await
                                 .expect("Failed to write to segment file");
                             file.flush().await.expect("Failed to flush segment file");
-                            tracing::info!("cancellation -- Wrote batch of {} messages to file", current_batch.records.len());
+                            tracing::info!("Flushed last batch of {} messages to file", current_batch.records.len());
                         }
                         Err(e) => {
                             tracing::error!("Failed to encode batch: {:?}", e);
@@ -87,11 +85,11 @@ pub async fn start_partition_writer(
                     }
                 }
                 file.sync_all().await.expect("Failed to sync segment file");
-                file.shutdown().await.expect("Failed to shutdown segment file");
                 tracing::info!("file synced and shutdown");
+
                 peers_rx.close();
                 tracing::info!("peers_rx closed");
-                tracing::info!("cancellation -- breaking out of partition manager for {}: {}", partition_info.topic.name, partition_info.partition_index);
+                tracing::info!("breaking out of partition manager for {}: {}", partition_info.topic.name, partition_info.partition_index);
                 break;
             }
         }
