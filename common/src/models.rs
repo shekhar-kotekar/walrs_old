@@ -29,6 +29,9 @@ impl Message {
     pub fn set_offset(&mut self, offset: u64) {
         self.offset = offset;
     }
+    pub fn get_offset(&self) -> u64 {
+        self.offset
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
