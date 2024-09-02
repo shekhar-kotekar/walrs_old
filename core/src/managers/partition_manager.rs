@@ -35,6 +35,7 @@ pub async fn start_partition_writer(
         }
     }
     let segment_file_path = format!("{}/{}", partition_info.partition_path, "segment_0.log");
+    tracing::info!("Segment file path: {}", segment_file_path);
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
@@ -42,18 +43,22 @@ pub async fn start_partition_writer(
         .await
         .unwrap();
     let mut current_batch = Batch { records: vec![] };
+    let mut batch_encoder = BatchEncoder {};
     loop {
         tokio::select! {
             Some(message) = peers_rx.recv() => {
+                tracing::info!("Received message: {:?}", message);
                 current_batch.records.push(message);
                 if current_batch.records.len() >= partition_info.topic.batch_size.unwrap() as usize {
-                    let mut dst = BytesMut::new();
-                    let mut batch_encoder = BatchEncoder {};
-                    match batch_encoder.encode(current_batch.clone(), &mut dst) {
+                    let mut encoded_batch = BytesMut::new();
+                    match batch_encoder.encode(current_batch.clone(), &mut encoded_batch) {
                         Ok(_) => {
-                            file.write_all(&dst).await.expect("Failed to write to segment file");
+                            file.write_all(&encoded_batch)
+                                .await
+                                .expect("Failed to write to segment file");
+                            file.flush().await.expect("Failed to flush segment file");
                             tracing::info!("Wrote batch of {} messages to file", current_batch.records.len());
-                            current_batch.records.clear();
+                            current_batch = Batch { records: vec![] };
                         }
                         Err(e) => {
                             tracing::error!("Failed to encode batch: {:?}", e);
@@ -65,8 +70,28 @@ pub async fn start_partition_writer(
             }
             _ = cancellation_token.cancelled() => {
                 tracing::info!("Cancellation token received for {}: {} partition manager.", partition_info.topic.name, partition_info.partition_index);
-                file.flush().await.expect("Failed to flush segment file");
+                tracing::info!("cancellation -- current batch: {:?}", current_batch);
+                if !current_batch.records.is_empty() {
+                    let mut encoded_batch = BytesMut::new();
+                    match batch_encoder.encode(current_batch.clone(), &mut encoded_batch) {
+                        Ok(_) => {
+                            file.write_all(&encoded_batch)
+                                .await
+                                .expect("Failed to write to segment file");
+                            file.flush().await.expect("Failed to flush segment file");
+                            tracing::info!("cancellation -- Wrote batch of {} messages to file", current_batch.records.len());
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to encode batch: {:?}", e);
+                        }
+                    }
+                }
+                file.sync_all().await.expect("Failed to sync segment file");
+                file.shutdown().await.expect("Failed to shutdown segment file");
+                tracing::info!("file synced and shutdown");
                 peers_rx.close();
+                tracing::info!("peers_rx closed");
+                tracing::info!("cancellation -- breaking out of partition manager for {}: {}", partition_info.topic.name, partition_info.partition_index);
                 break;
             }
         }
@@ -79,10 +104,7 @@ mod tests {
 
     use super::*;
     use bytes::BytesMut;
-    use common::{
-        codecs::encoder::MessageEncoder,
-        models::{Message, Topic},
-    };
+    use common::models::{Message, Topic};
     use test_log::test;
 
     #[test(tokio::test)]
@@ -110,20 +132,21 @@ mod tests {
         });
 
         let message_1 = Message {
-            payload: BytesMut::from("Message without timestamp".as_bytes()).freeze(),
+            payload: BytesMut::from("Message 1 without timestamp".as_bytes()).freeze(),
             key: None,
             timestamp: None,
         };
         let message_2 = Message {
-            payload: BytesMut::from("Message with timestamp".as_bytes()).freeze(),
+            payload: BytesMut::from("Message 2 with timestamp".as_bytes()).freeze(),
             key: None,
             timestamp: Some(1234567890),
         };
-        let mut dst = BytesMut::new();
-        let mut message_encoder = MessageEncoder {
-            payload_max_bytes: 1000,
+        let mut encoded_batch = BytesMut::new();
+        let mut batch_encoder = BatchEncoder {};
+        let batch = Batch {
+            records: vec![message_1.clone(), message_2.clone()],
         };
-        message_encoder.encode(message_1.clone(), &mut dst).unwrap();
+        batch_encoder.encode(batch, &mut encoded_batch).unwrap();
 
         peers_tx.send(message_1).await.unwrap();
         peers_tx.send(message_2).await.unwrap();
@@ -135,7 +158,7 @@ mod tests {
                 let segment_file_path =
                     format!("{}/0/{}", log_dir_path.to_str().unwrap(), "segment_0.log");
                 let file_contents = fs::read(segment_file_path).unwrap();
-                assert_eq!(&file_contents, &dst);
+                assert_eq!(&file_contents, &encoded_batch);
             }
             Err(e) => {
                 panic!("Partition manager failed with error: {:?}", e);
