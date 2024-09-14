@@ -126,7 +126,7 @@ async fn handle_write_to_topic_request(
                 let command_for_topic_manager = TopicManagerCommands::GetPartitionManagerTx {
                     topic_name: topic_name.clone(),
                     message_key: message.key.clone(),
-                    reply_tx: reply_tx,
+                    reply_tx,
                 };
                 topic_manager_tx_clone
                     .send(command_for_topic_manager)
@@ -143,7 +143,7 @@ async fn handle_write_to_topic_request(
             }
             let response = BrokerResponse::MessageBatchWriteSuccess;
             let response_bin = bincode::serialize(&response).unwrap();
-            buf_stream.write(&response_bin).await.unwrap();
+            buf_stream.write_all(&response_bin).await.unwrap();
             buf_stream.shutdown().await.unwrap();
         }
         Ok(None) => {
@@ -152,7 +152,7 @@ async fn handle_write_to_topic_request(
                 error: "Not enough data to decode a batch".to_string(),
             };
             let response_bin = bincode::serialize(&response).unwrap();
-            buf_stream.write(&response_bin).await.unwrap();
+            buf_stream.write_all(&response_bin).await.unwrap();
             buf_stream.shutdown().await.unwrap();
         }
         Err(e) => {
@@ -161,7 +161,7 @@ async fn handle_write_to_topic_request(
                 error: format!("Error decoding batch: {:?}", e),
             };
             let response_bin = bincode::serialize(&response).unwrap();
-            buf_stream.write(&response_bin).await.unwrap();
+            buf_stream.write_all(&response_bin).await.unwrap();
             buf_stream.shutdown().await.unwrap();
         }
     }

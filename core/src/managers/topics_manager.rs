@@ -32,6 +32,12 @@ impl TopicsManager {
     }
 
     pub async fn start_topics_manager(&mut self, mut parent_rx: Receiver<TopicManagerCommands>) {
+        self.topics = self.read_all_topic_info();
+        tracing::info!(
+            "{} topics found in {}.",
+            self.topics.len(),
+            self.log_dir_path
+        );
         tracing::info!("Topic Manager started");
         loop {
             tokio::select! {
@@ -39,6 +45,9 @@ impl TopicsManager {
                         match command {
                             TopicManagerCommands::CreateTopic { topic, reply_tx } => {
                                 self.create_topic(topic, reply_tx).await;
+                            }
+                            TopicManagerCommands::GetAllTopics { reply_tx } => {
+                                reply_tx.send(self.topics.clone()).unwrap();
                             }
                             TopicManagerCommands::GetPartitionManagerTx {
                                 topic_name,
@@ -107,10 +116,46 @@ impl TopicsManager {
                         .await;
                 });
             }
+            self.serialize_topic_to_file(&topic);
             self.topics.insert(topic_name.clone(), topic.clone());
             tracing::info!("{} Topic created", topic_name);
             reply_tx.send(Some(topic)).unwrap();
         }
+    }
+
+    fn serialize_topic_to_file(&self, topic: &Topic) {
+        let topic_file_path = format!("{}/{}.json", self.log_dir_path, topic.name);
+        let serialized_topic = bincode::serialize(topic).unwrap();
+        std::fs::write(topic_file_path, serialized_topic).unwrap();
+    }
+
+    fn deserialize_topic_from_file(&self, topic_name: &str) -> Option<Topic> {
+        let topic_file_path = format!("{}/{}.json", self.log_dir_path, topic_name);
+        if let Ok(serialized_topic) = std::fs::read(topic_file_path) {
+            let topic: Topic = bincode::deserialize(&serialized_topic).unwrap();
+            Some(topic)
+        } else {
+            None
+        }
+    }
+
+    fn read_all_topic_info(&self) -> HashMap<String, Topic> {
+        let mut topics = HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(self.log_dir_path.clone()) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    let entry_name = entry.file_name().to_str().unwrap().to_owned();
+                    if path.is_dir() && entry_name.starts_with("topic_") {
+                        if let Some(topic) = self.deserialize_topic_from_file(&entry_name) {
+                            tracing::info!("Found topic: {}", topic.name);
+                            topics.insert(entry_name, topic);
+                        }
+                    }
+                }
+            }
+        }
+        topics
     }
 }
 
@@ -122,6 +167,9 @@ pub enum TopicManagerCommands {
     GetTopicInfo {
         topic_name: String,
         reply_tx: oneshot::Sender<Option<Topic>>,
+    },
+    GetAllTopics {
+        reply_tx: oneshot::Sender<HashMap<String, Topic>>,
     },
     GetPartitionManagerTx {
         topic_name: String,

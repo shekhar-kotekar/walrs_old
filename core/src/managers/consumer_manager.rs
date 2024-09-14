@@ -13,7 +13,9 @@ pub async fn start_consumer_manager(
     cancellation_token: CancellationToken,
 ) {
     let partition_reader_task_tracker: TaskTracker = TaskTracker::new();
-    let partition_readers = get_partition_paths(log_dir_path);
+    let partition_readers = get_partition_paths(log_dir_path)
+        .iter()
+        .map(|partition_path| {});
 
     loop {
         tokio::select! {
@@ -40,13 +42,20 @@ fn get_partition_paths(log_dir_path: String) -> Vec<String> {
             for entry in entries {
                 if let Ok(entry) = entry {
                     let path = entry.path();
+                    let path_str = path.to_str().unwrap().to_string();
                     if path.is_dir() {
-                        let path_str = path.to_str().unwrap().to_string();
-                        if entry
+                        let partition_name = entry.file_name().to_str().unwrap().to_owned();
+                        let parent_dir_name = entry
+                            .path()
+                            .parent()
+                            .unwrap()
                             .file_name()
+                            .unwrap()
                             .to_str()
                             .unwrap()
-                            .starts_with("partition_")
+                            .to_owned();
+                        if partition_name.starts_with("partition_")
+                            && parent_dir_name.starts_with("topic_")
                         {
                             paths.push(path_str);
                         } else {

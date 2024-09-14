@@ -16,9 +16,9 @@ fn main() {
             let topic_to_create = Topic {
                 name: args.topic_name,
                 num_partitions: partition_count,
-                replication_factor: replication_factor,
+                replication_factor,
                 retention_period: Some(1),
-                batch_size: batch_size,
+                batch_size,
             };
             create_topic(topic_to_create, args.broker_address);
         }

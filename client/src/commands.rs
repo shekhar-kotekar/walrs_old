@@ -57,9 +57,9 @@ pub fn write_message(message: String, topic_name: String, broker_address: String
 
     tracing::info!("Request to write message sent to server.");
 
-    let mut response_buffer = BytesMut::with_capacity(256);
+    let mut response_buffer = Vec::new();
     stream
-        .read(&mut response_buffer)
+        .read_to_end(&mut response_buffer)
         .expect("Could not read from stream");
 
     let response = bincode::deserialize::<BrokerResponse>(&response_buffer).unwrap();
