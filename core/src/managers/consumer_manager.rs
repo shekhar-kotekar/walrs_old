@@ -1,4 +1,4 @@
-use std::fs;
+use std::{f32::consts::E, fs};
 
 use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -42,6 +42,7 @@ fn get_partition_paths(log_dir_path: String) -> Vec<String> {
             for entry in entries {
                 if let Ok(entry) = entry {
                     let path = entry.path();
+                    println!("checking path: {:?}", path);
                     let path_str = path.to_str().unwrap().to_string();
                     if path.is_dir() {
                         let partition_name = entry.file_name().to_str().unwrap().to_owned();
@@ -59,11 +60,19 @@ fn get_partition_paths(log_dir_path: String) -> Vec<String> {
                         {
                             paths.push(path_str);
                         } else {
+                            tracing::warn!(
+                                "{} does not start with partition_ prefix or its parent {} does not start with topic_ prefix",
+                                path_str, parent_dir_name
+                            );
                             recursive_search(&path_str, paths);
                         }
                     }
+                } else {
+                    tracing::error!("Failed to read entry: {:?}", entry);
                 }
             }
+        } else {
+            tracing::error!("Failed to read directory: {}", dir_path);
         }
     }
     let mut partition_paths = Vec::new();
@@ -77,9 +86,9 @@ mod tests {
 
     #[test]
     fn test_get_partition_paths() {
-        let topic_name = "test_topic".to_string();
+        let topic_name = "traffic_info".to_string();
         let temp_dir = tempdir::TempDir::new("log_dir_prefix").unwrap();
-        let log_dir_path = temp_dir.path().join(topic_name.clone());
+        let log_dir_path = temp_dir.path().join(format!("topic_{}", topic_name));
         let partition_0_path = log_dir_path.join("partition_0");
         let partition_1_path = log_dir_path.join("partition_1");
         fs::create_dir_all(partition_0_path.clone()).unwrap();

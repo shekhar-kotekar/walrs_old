@@ -116,14 +116,14 @@ impl TopicsManager {
                         .await;
                 });
             }
-            self.serialize_topic_to_file(&topic);
+            self.serialize_topic_info_to_file(&topic);
             self.topics.insert(topic_name.clone(), topic.clone());
             tracing::info!("{} Topic created", topic_name);
             reply_tx.send(Some(topic)).unwrap();
         }
     }
 
-    fn serialize_topic_to_file(&self, topic: &Topic) {
+    fn serialize_topic_info_to_file(&self, topic: &Topic) {
         let topic_file_path = format!("{}/{}.json", self.log_dir_path, topic.name);
         let serialized_topic = bincode::serialize(topic).unwrap();
         std::fs::write(topic_file_path, serialized_topic).unwrap();
