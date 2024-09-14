@@ -15,6 +15,8 @@ set_kind_context:
 prepare: set_kind_context
 	@if [ -z "$(PACKAGE)" ]; then \
         echo "Error: PACKAGE variable is not set"; \
+		echo "Usage: make prepare PACKAGE=<package_name>"; \
+		echo "Example: make prepare PACKAGE=core"; \
         exit 1; \
     fi
 	@echo "Preparing $(PACKAGE) package"
