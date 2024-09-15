@@ -1,4 +1,4 @@
-use std::{f32::consts::E, fs};
+use std::fs;
 
 use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -22,7 +22,7 @@ pub async fn start_consumer_manager(
             Some(consumer_manager_command) = consumer_manager_rx.recv() => {
                 match consumer_manager_command {
                     ConsumerManagerCommand::ReadMessages { topic_name } => {
-                        tracing::info!("Sending message to topic: {}", topic_name);
+                        tracing::info!("Reading message for topic: {}", topic_name);
                     }
                 }
             }

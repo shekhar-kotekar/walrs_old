@@ -32,13 +32,7 @@ async fn main() {
         tracing::info!("Shutting down gracefully");
         cancellation_token_for_shutdown.cancel();
     });
-
-    let log_dir_path = "./logs/".to_string();
-    let mut topics_manager = TopicsManager::new(log_dir_path, cancellation_token.clone());
-    let (topic_manager_tx, topic_manager_rx) = mpsc::channel::<TopicManagerCommands>(10);
-    tokio::spawn(async move {
-        topics_manager.start_topics_manager(topic_manager_rx).await;
-    });
+    let topic_manager_tx = start_topics_manager(cancellation_token.clone()).await;
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
@@ -48,6 +42,18 @@ async fn main() {
         let (socket, _) = listener.accept().await.unwrap();
         handle_client_connection(socket, topic_manager_tx.clone()).await;
     }
+}
+
+async fn start_topics_manager(
+    cancellation_token: CancellationToken,
+) -> mpsc::Sender<TopicManagerCommands> {
+    let log_dir_path = "./logs/".to_string();
+    let mut topics_manager = TopicsManager::new(log_dir_path, cancellation_token);
+    let (topic_manager_tx, topic_manager_rx) = mpsc::channel::<TopicManagerCommands>(10);
+    tokio::spawn(async move {
+        topics_manager.start_topics_manager(topic_manager_rx).await;
+    });
+    topic_manager_tx
 }
 
 async fn handle_client_connection(
