@@ -8,6 +8,7 @@ pub struct Message {
     pub payload: Bytes,
     pub key: Option<String>,
     pub timestamp: Option<u128>,
+    offset: u64,
 }
 
 impl Message {
@@ -22,7 +23,14 @@ impl Message {
             payload,
             key,
             timestamp: Some(message_timestamp),
+            offset: 0,
         }
+    }
+    pub fn set_offset(&mut self, offset: u64) {
+        self.offset = offset;
+    }
+    pub fn get_offset(&self) -> u64 {
+        self.offset
     }
 }
 
@@ -35,6 +43,7 @@ pub struct Batch {
 pub enum TopicCommand {
     CreateTopic { topic: Topic },
     WriteToTopic { topic_name: String },
+    ReadFromTopic { topic_name: String },
 }
 
 impl From<Vec<u8>> for TopicCommand {

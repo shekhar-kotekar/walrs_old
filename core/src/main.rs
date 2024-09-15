@@ -32,13 +32,7 @@ async fn main() {
         tracing::info!("Shutting down gracefully");
         cancellation_token_for_shutdown.cancel();
     });
-
-    let log_dir_path = "./logs/".to_string();
-    let mut topics_manager = TopicsManager::new(log_dir_path, cancellation_token.clone());
-    let (topic_manager_tx, topic_manager_rx) = mpsc::channel::<TopicManagerCommands>(10);
-    tokio::spawn(async move {
-        topics_manager.start_topics_manager(topic_manager_rx).await;
-    });
+    let topic_manager_tx = start_topics_manager(cancellation_token.clone()).await;
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
@@ -48,6 +42,18 @@ async fn main() {
         let (socket, _) = listener.accept().await.unwrap();
         handle_client_connection(socket, topic_manager_tx.clone()).await;
     }
+}
+
+async fn start_topics_manager(
+    cancellation_token: CancellationToken,
+) -> mpsc::Sender<TopicManagerCommands> {
+    let log_dir_path = "./logs/".to_string();
+    let mut topics_manager = TopicsManager::new(log_dir_path, cancellation_token);
+    let (topic_manager_tx, topic_manager_rx) = mpsc::channel::<TopicManagerCommands>(10);
+    tokio::spawn(async move {
+        topics_manager.start_topics_manager(topic_manager_rx).await;
+    });
+    topic_manager_tx
 }
 
 async fn handle_client_connection(
@@ -76,8 +82,37 @@ async fn handle_client_connection(
                 )
                 .await;
             }
+            TopicCommand::ReadFromTopic { topic_name } => {
+                handle_read_from_topic_request(
+                    topic_name,
+                    topic_manager_tx,
+                    buf_stream.into_inner(),
+                )
+                .await;
+            }
         }
     });
+}
+
+async fn handle_read_from_topic_request(
+    topic_name: String,
+    topic_manager_tx_clone: mpsc::Sender<TopicManagerCommands>,
+    mut buf_stream: TcpStream,
+) {
+    let (reply_tx, reply_rx) = oneshot::channel();
+    topic_manager_tx_clone
+        .send(TopicManagerCommands::GetTopicInfo {
+            topic_name: topic_name.clone(),
+            reply_tx,
+        })
+        .await
+        .unwrap();
+    let response = reply_rx.await.unwrap();
+    let response_bytes = bincode::serialize(&response).unwrap();
+
+    buf_stream.write_all(&response_bytes).await.unwrap();
+    buf_stream.flush().await.unwrap();
+    buf_stream.shutdown().await.unwrap();
 }
 
 async fn handle_write_to_topic_request(
@@ -97,7 +132,7 @@ async fn handle_write_to_topic_request(
                 let command_for_topic_manager = TopicManagerCommands::GetPartitionManagerTx {
                     topic_name: topic_name.clone(),
                     message_key: message.key.clone(),
-                    reply_tx: reply_tx,
+                    reply_tx,
                 };
                 topic_manager_tx_clone
                     .send(command_for_topic_manager)
@@ -114,7 +149,7 @@ async fn handle_write_to_topic_request(
             }
             let response = BrokerResponse::MessageBatchWriteSuccess;
             let response_bin = bincode::serialize(&response).unwrap();
-            buf_stream.write(&response_bin).await.unwrap();
+            buf_stream.write_all(&response_bin).await.unwrap();
             buf_stream.shutdown().await.unwrap();
         }
         Ok(None) => {
@@ -123,7 +158,7 @@ async fn handle_write_to_topic_request(
                 error: "Not enough data to decode a batch".to_string(),
             };
             let response_bin = bincode::serialize(&response).unwrap();
-            buf_stream.write(&response_bin).await.unwrap();
+            buf_stream.write_all(&response_bin).await.unwrap();
             buf_stream.shutdown().await.unwrap();
         }
         Err(e) => {
@@ -132,7 +167,7 @@ async fn handle_write_to_topic_request(
                 error: format!("Error decoding batch: {:?}", e),
             };
             let response_bin = bincode::serialize(&response).unwrap();
-            buf_stream.write(&response_bin).await.unwrap();
+            buf_stream.write_all(&response_bin).await.unwrap();
             buf_stream.shutdown().await.unwrap();
         }
     }
