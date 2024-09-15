@@ -142,15 +142,13 @@ impl TopicsManager {
     fn read_all_topic_info(&self) -> HashMap<String, Topic> {
         let mut topics = HashMap::new();
         if let Ok(entries) = std::fs::read_dir(self.log_dir_path.clone()) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    let entry_name = entry.file_name().to_str().unwrap().to_owned();
-                    if path.is_dir() && entry_name.starts_with("topic_") {
-                        if let Some(topic) = self.deserialize_topic_from_file(&entry_name) {
-                            tracing::info!("Found topic: {}", topic.name);
-                            topics.insert(entry_name, topic);
-                        }
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let entry_name = entry.file_name().to_str().unwrap().to_owned();
+                if path.is_dir() && entry_name.starts_with("topic_") {
+                    if let Some(topic) = self.deserialize_topic_from_file(&entry_name) {
+                        tracing::info!("Found topic: {}", topic.name);
+                        topics.insert(entry_name, topic);
                     }
                 }
             }
