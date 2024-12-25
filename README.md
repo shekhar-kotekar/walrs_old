@@ -1,5 +1,9 @@
 # The Great Wal-RS
 Kafka implementation using Rust and Tokio.
+
+## Binned repo
+This repo has some useful code but discarding it for various reasons, attempting it one more time as part of another repository.
+
 ## Console client
 Create a new topic using below command:
 ```
